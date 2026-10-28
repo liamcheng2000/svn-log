@@ -1,0 +1,9 @@
+# 统一换行符，避免 Windows 下批处理被 LF 破坏
+* text=auto
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=crlf
+*.xlsx binary
