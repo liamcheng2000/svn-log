@@ -1,0 +1,99 @@
+# SVN 日志导出工具
+
+按 SVN 地址 + 日期范围或版本范围导出提交日志，自动过滤 `.cpp` / `.h` 文件，生成三页 Excel 报表。
+
+**当前版本：v1.0.0**
+
+## 环境要求
+
+| 项 | 说明 |
+|---|---|
+| Python | 3.9+（已在 3.14 上验证） |
+| 依赖 | `openpyxl`（`pip install -r requirements.txt`） |
+| SVN 客户端 | 需要 `svn.exe`，TortoiseSVN 自带；未加入 PATH 也能自动从注册表定位 |
+
+## 运行
+
+```bat
+python -m pip install -r requirements.txt
+python main.py
+```
+
+或双击 `run.bat`。
+
+## 使用步骤
+
+1. 填写 **SVN 地址**（如 `https://svn.example.com/repo/trunk`），可先点「测试连接」确认。
+2. 选择查询方式（二选一，另一组会自动置灰）：
+   - **按日期范围**：`YYYY-MM-DD`，留空表示不限。结束日期含当天 23:59:59。
+   - **按版本范围**：数字或 `HEAD`，留空表示 `1` / `HEAD`。
+3. **文件过滤**：默认 `.cpp;.h`，分号/逗号/空格分隔，支持 `*.cpp`、`cpp`、`.cpp` 三种写法，不区分大小写。留空 = 全部文件。
+4. 选择**导出文件**路径，点击「开始导出」。查询在后台线程执行，可随时取消。
+5. 完成后自动打开 Excel（可取消勾选「生成后自动打开 Excel」）。
+
+## Excel 结构
+
+| 页 | 内容 |
+|---|---|
+| 基本信息 | SVN 地址、查询模式与范围、过滤规则、版本/文件数、新增/修改/删除统计、提交人数、执行命令等 |
+| 日志明细 | **每个文件一行**：序号、版本号、作者、提交日期、提交说明、操作、文件路径、扩展名 |
+| 版本汇总 | **每个版本一行**：文件数、A/M/D 计数、文件列表（单元格内换行），底部带合计行 |
+
+样式：首行冻结、自动筛选、同版本交替底色、列宽自适应、时间按 `yyyy-mm-dd hh:mm` 显示。
+
+## 认证
+
+工具固定使用 `--non-interactive`，不弹窗、不卡界面，直接复用 SVN 自身的凭据缓存（`%APPDATA%\Subversion\auth`）。
+
+若提示认证失败：
+1. 点击「打开认证终端」；
+2. 在弹出的黑窗口里按提示输入账号密码；
+3. 命令结束后关闭窗口，回到工具重新导出即可（凭据已被缓存）。
+
+密码不会写入本工具的配置文件；`%APPDATA%\SVNLogApp\config.json` 只保存地址、范围、过滤规则、输出目录等偏好。
+
+## 常见问题
+
+| 现象 | 处理 |
+|---|---|
+| 未找到 svn.exe | 点「浏览」选 `C:\Program Files\TortoiseSVN\bin\svn.exe`，或把该目录加入 PATH |
+| 认证失败 E170001 / E215004 | 用「打开认证终端」手动登录一次 |
+| 证书校验失败 E230001 | 在 TortoiseSVN 中永久接受服务器证书后重试 |
+| 无法连接 E170013 / E175002 | 检查地址、网络、代理/VPN |
+| 提示「没有匹配的日志」 | 范围内该路径没有提交，或过滤规则太窄；可勾选「保留无匹配文件的版本」查看版本是否存在 |
+| 中文乱码 | 工具内部按 UTF-8 解析 XML，不依赖控制台代码页；若 Excel 中乱码请确认使用 Excel 而非 WPS 旧版本 |
+
+## 打包 exe
+
+```bat
+build_exe.bat
+```
+
+产物：`dist\SVN日志导出.exe`（单文件、无控制台）。
+目标机器仍需安装 TortoiseSVN（提供 svn.exe），或把 svn.exe 放到 PATH。
+
+## 项目结构
+
+```
+main.py                 入口（DPI 适配 + 异常兜底）
+app/config.py           偏好持久化（不含凭据）
+app/models.py           LogEntry / FileChange
+app/svn_client.py       svn.exe 定位、命令构造、XML 解析、错误翻译
+app/excel_writer.py     三页报表生成与样式
+app/ui.py               tkinter 主窗口、日历弹窗、后台线程
+tests/test_core.py      解析/过滤/Excel 自测
+build_exe.bat           PyInstaller 打包脚本
+version_info.txt        exe 版本资源（1.0.0）
+```
+
+## 版本记录
+
+| 版本 | 说明 |
+|---|---|
+| 1.0.0 | 首个正式版：SVN 地址/日期/版本输入、`.cpp`/`.h` 过滤、三页 Excel（基本信息 / 日志明细 / 版本汇总）、后台查询与取消、凭据复用与认证终端、偏好记忆 |
+
+## 自测
+
+```bat
+python -m unittest discover -s tests -v
+```

@@ -1,0 +1,32 @@
+# PyInstaller Windows 版本资源文件（打包时写入 exe 属性）
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          '080404B0',
+          [
+            StringStruct('CompanyName', ''),
+            StringStruct('FileDescription', 'SVN 日志导出工具'),
+            StringStruct('FileVersion', '1.0.0'),
+            StringStruct('InternalName', 'svn-log-export'),
+            StringStruct('OriginalFilename', 'SVN日志导出.exe'),
+            StringStruct('ProductName', 'SVN 日志导出工具'),
+            StringStruct('ProductVersion', '1.0.0')
+          ]
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct('Translation', [2052, 1200])])
+  ]
+)
