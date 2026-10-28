@@ -19,6 +19,27 @@ from .svn_client import Cancelled, SvnError
 WEEKDAYS = ("一", "二", "三", "四", "五", "六", "日")
 
 
+def _is_file_locked(path: str) -> bool:
+    """Windows 上判断文件是否被其他程序（如 Excel）独占。"""
+    if not os.path.exists(path):
+        return False
+    try:
+        with open(path, "a+b"):
+            pass
+        return False
+    except OSError:
+        return True
+
+
+def _is_locked_error(exc: OSError) -> bool:
+    """PermissionError / ERROR_SHARING_VIOLATION 都视为文件被占用。"""
+    if isinstance(exc, PermissionError):
+        return True
+    if getattr(exc, "winerror", None) in (5, 32, 33):
+        return True
+    return exc.errno in (11, 13)
+
+
 class CalendarPopup(tk.Toplevel):
     """轻量日历弹窗，避免引入第三方控件。"""
 
@@ -217,7 +238,7 @@ class App(tk.Tk):
         ttk.Label(frame, text="结束").grid(row=1, column=4, sticky="e", padx=(0, 6), pady=(10, 0))
         self.entry_rev_to = ttk.Entry(frame, textvariable=self.var_rev_to, width=14)
         self.entry_rev_to.grid(row=1, column=5, sticky="ew", pady=(10, 0))
-        ttk.Label(frame, text="留空 = 1 / HEAD（数字或 HEAD）", foreground="#7F7F7F").grid(
+        ttk.Label(frame, text="留空 = 最近 10 条（HEAD-10 ~ HEAD）", foreground="#7F7F7F").grid(
             row=1, column=7, sticky="w", padx=(12, 0), pady=(10, 0)
         )
         return frame
@@ -453,6 +474,8 @@ class App(tk.Tk):
             output += ".xlsx"
         output = os.path.abspath(output)
 
+        limit = 10 if (mode == "rev" and not rev_from and not rev_to) else None
+
         return {
             "url": url,
             "svn_exe": svn_exe,
@@ -461,6 +484,7 @@ class App(tk.Tk):
             "date_to": date_to,
             "rev_from": rev_from,
             "rev_to": rev_to,
+            "limit": limit,
             "rev_spec": svn_client.build_rev_spec(mode, date_from or rev_from, date_to or rev_to),
             "patterns": patterns,
             "output": output,
@@ -481,6 +505,14 @@ class App(tk.Tk):
             if not messagebox.askyesno("确认", "未设置文件过滤，将导出全部类型的文件，是否继续？"):
                 return
         if os.path.exists(params["output"]):
+            if _is_file_locked(params["output"]):
+                messagebox.showwarning(
+                    "文件被占用",
+                    f"{params['output']}\n\n"
+                    "该文件正被 Excel / WPS 打开，无法写入。\n"
+                    "请先关闭该文件，或修改导出文件名后重试。",
+                )
+                return
             if not messagebox.askyesno("文件已存在", f"{params['output']}\n\n是否覆盖？"):
                 return
 
@@ -501,13 +533,16 @@ class App(tk.Tk):
     def _run_export(self, params: dict) -> None:
         started = datetime.now()
         try:
-            command = svn_client.build_log_command(params["svn_exe"], params["url"], params["rev_spec"])
+            command = svn_client.build_log_command(
+                params["svn_exe"], params["url"], params["rev_spec"], params["limit"]
+            )
             self._post(("log", "执行命令：" + " ".join(command)))
 
             raw_entries = svn_client.fetch_log(
                 params["svn_exe"],
                 params["url"],
                 params["rev_spec"],
+                limit=params["limit"],
                 on_progress=lambda count: self._post(("count", count)),
                 cancel_event=self.cancel_event,
             )
@@ -532,12 +567,26 @@ class App(tk.Tk):
             os.makedirs(os.path.dirname(params["output"]) or ".", exist_ok=True)
             self._post(("log", "正在生成 Excel…"))
             self._post(("progress_set", 0))
-            write_report(
-                params["output"],
-                info_items,
-                entries,
-                on_progress=lambda pct: self._post(("progress_set", pct)),
-            )
+            try:
+                write_report(
+                    params["output"],
+                    info_items,
+                    entries,
+                    on_progress=lambda pct: self._post(("progress_set", pct)),
+                )
+            except OSError as exc:
+                if _is_locked_error(exc):
+                    self._post(
+                        (
+                            "error",
+                            "Excel 文件被占用",
+                            f"无法写入文件：\n{params['output']}\n\n"
+                            "该文件可能正被 Excel / WPS 打开，或当前账号没有写入权限。\n"
+                            "请关闭 Excel 后重新导出，或修改导出文件名/目录。",
+                        )
+                    )
+                    return
+                raise
             elapsed = (datetime.now() - started).total_seconds()
             self._post(("log", f"耗时 {elapsed:.1f} 秒。"))
             self._post(("done", params["output"], len(entries), file_count))
@@ -555,6 +604,8 @@ class App(tk.Tk):
             start = params["date_from"] or "不限"
             end = params["date_to"] or "不限"
             return f"按日期 {start} ~ {end}"
+        if params.get("limit"):
+            return f"最近 {params['limit']} 条（HEAD-10 ~ HEAD）"
         start = params["rev_from"] or "1"
         end = params["rev_to"] or "HEAD"
         return f"按版本 r{start} ~ r{end}"
@@ -574,9 +625,14 @@ class App(tk.Tk):
             range_text = f"{params['date_from'] or '不限'} ~ {params['date_to'] or '不限'}"
         else:
             mode_text = "按版本范围"
-            range_text = f"r{params['rev_from'] or 1} ~ r{params['rev_to'] or 'HEAD'}"
+            if params.get("limit"):
+                range_text = "最近 10 条（HEAD-10 ~ HEAD）"
+            else:
+                range_text = f"r{params['rev_from'] or 1} ~ r{params['rev_to'] or 'HEAD'}"
 
-        command = svn_client.build_log_command(params["svn_exe"], params["url"], params["rev_spec"])
+        command = svn_client.build_log_command(
+            params["svn_exe"], params["url"], params["rev_spec"], params["limit"]
+        )
         return [
             ("生成时间", started.strftime("%Y-%m-%d %H:%M:%S")),
             ("SVN 地址", params["url"]),

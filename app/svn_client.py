@@ -152,10 +152,18 @@ def build_rev_spec(mode: str, start: str, end: str) -> str | None:
     return f"{start_part or '1'}:{end_part or 'HEAD'}"
 
 
-def build_log_command(svn_exe: str, url: str, rev_spec: str | None) -> list[str]:
+def build_log_command(
+    svn_exe: str,
+    url: str,
+    rev_spec: str | None,
+    limit: int | None = None,
+) -> list[str]:
     command = [svn_exe, "log", "--xml", "--verbose", "--non-interactive"]
     if rev_spec:
         command += ["-r", rev_spec]
+    if limit:
+        # 不指定 -r 时，--limit N 等价于「最近 N 条日志」，即 HEAD-N ~ HEAD
+        command += ["--limit", str(limit)]
     command.append(url)
     return command
 
@@ -370,11 +378,12 @@ def fetch_log(
     svn_exe: str,
     url: str,
     rev_spec: str | None,
+    limit: int | None = None,
     on_progress: Callable[[int], None] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> list[LogEntry]:
     """执行 svn log 并返回解析后的日志；支持实时进度与取消。"""
-    command = build_log_command(svn_exe, url, rev_spec)
+    command = build_log_command(svn_exe, url, rev_spec, limit)
     with tempfile.TemporaryFile() as err_file:
         process = subprocess.Popen(
             command,
