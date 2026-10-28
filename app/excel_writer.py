@@ -55,18 +55,39 @@ MESSAGE_WIDTH = DETAIL_WIDTHS[MESSAGE_COL - 1]
 SECTION_KEYWORDS = (
     "更改原因",
     "修改原因",
+    "变更原因",
     "问题单号",
     "缺陷单号",
+    "需求单号",
+    "任务单号",
     "更改措施",
     "修改措施",
+    "解决方案",
+    "修改方案",
     "影响范围",
+    "影响模块",
     "桌面验证",
     "验证情况",
+    "验证结果",
+    "测试情况",
+    "测试结果",
     "测试说明",
+    "自测情况",
+    "自测结果",
     "备注",
 )
-_KEY_ALT = "|".join(SECTION_KEYWORDS)
-_LINE_PATTERN = re.compile(rf"^({_KEY_ALT})\s*[：:]\s*(.*)$")
+# 长的字段名优先匹配，避免「更改原因」被「更改」之类的前缀抢走
+_KEY_ALT = "|".join(sorted(SECTION_KEYWORDS, key=len, reverse=True))
+
+# 行内出现「字段：」或「【字段】」时，先补一个换行
+_INLINE_COLON = re.compile(rf"(?<!\n)[ \t]*(?=(?:{_KEY_ALT})\s*[：:])")
+_INLINE_BRACKET = re.compile(rf"(?<!\n)[ \t]*(?=【\s*(?:{_KEY_ALT})\s*】)")
+
+# 行首的几种字段写法
+_BRACKET_LABEL = re.compile(rf"^[【\[]\s*({_KEY_ALT})\s*[】\]]\s*(.*)$")
+_COLON_LABEL = re.compile(rf"^({_KEY_ALT})\s*[：:]\s*(.*)$")
+_SPACE_LABEL = re.compile(rf"^({_KEY_ALT})\s+(.*)$")
+_BARE_LABEL = re.compile(rf"^({_KEY_ALT})\s*$")
 _BLANK_LINES = re.compile(r"\n{3,}")
 
 
@@ -74,18 +95,35 @@ _BLANK_LINES = re.compile(r"\n{3,}")
 # 提交说明分段
 # --------------------------------------------------------------------------- #
 
+def _label_parts(line: str) -> tuple[str, str] | None:
+    """识别一行是否是「字段名 + 内容」，返回 (加粗前缀, 内容)。"""
+    match = _BRACKET_LABEL.match(line)
+    if match:
+        return f"【{match.group(1)}】", match.group(2).strip()
+    match = _COLON_LABEL.match(line)
+    if match:
+        return match.group(1) + "：", match.group(2).strip()
+    match = _SPACE_LABEL.match(line)
+    if match:
+        return match.group(1) + "：", match.group(2).strip()
+    match = _BARE_LABEL.match(line)
+    if match:
+        return match.group(1) + "：", ""
+    return None
+
+
 def split_message_segments(message: str) -> list[tuple[str, str]]:
     """把提交说明拆成 [(加粗字段名, 内容)]，加粗字段名为空表示普通行。
 
-    ``更改原因：xxx 问题单号：123`` 这种写在一行里的也会被拆开。
+    支持 ``更改原因：xxx``、``【更改原因】xxx``、字段独占一行、
+    以及 ``xxx 问题单号：123`` 这种写在同一行的写法。
     """
     text = (message or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not text:
         return []
 
-    for keyword in SECTION_KEYWORDS:
-        # 字段名不在行首时，先补一个换行；不处理已在行首的情况
-        text = re.sub(rf"(?<!\n)[ \t]*(?={keyword}\s*[：:])", "\n", text)
+    text = _INLINE_COLON.sub("\n", text)
+    text = _INLINE_BRACKET.sub("\n", text)
     text = _BLANK_LINES.sub("\n\n", text)
 
     segments: list[tuple[str, str]] = []
@@ -93,32 +131,41 @@ def split_message_segments(message: str) -> list[tuple[str, str]]:
         line = raw.strip()
         if not line:
             continue
-        match = _LINE_PATTERN.match(line)
-        if match:
-            segments.append((match.group(1) + "：", match.group(2).strip()))
-        else:
-            segments.append(("", line))
+        parts = _label_parts(line)
+        segments.append(parts if parts else ("", line))
     return segments
 
 
+def display_message(message: str) -> str:
+    """按最终渲染效果拼回纯文本，用于估算行高。"""
+    segments = split_message_segments(message)
+    return "\n".join(prefix + body for prefix, body in segments)
+
+
 def _message_value(message: str):
-    """生成富文本单元格值：字段名加粗，每段另起一行。"""
+    """生成富文本单元格值：字段名加粗，每段另起一行。
+
+    注意: 换行符并入下一个文本块，不能产生只含空白的 run，
+    否则 Excel 打开时会报「字符串属性」修复错误。
+    """
     segments = split_message_segments(message)
     if not segments:
         return ""
     if len(segments) == 1 and not segments[0][0]:
         return segments[0][1]
 
+    normal_font = InlineFont(rFont=FONT_NAME, sz=10)
+    bold_font = InlineFont(rFont=FONT_NAME, sz=10, b=True)
+
     blocks: list = []
     for index, (prefix, body) in enumerate(segments):
-        if index:
-            blocks.append("\n")
+        lead = "\n" if index else ""
         if prefix:
-            blocks.append(TextBlock(InlineFont(rFont=FONT_NAME, sz=10, b=True), prefix))
+            blocks.append(TextBlock(bold_font, lead + prefix))
             if body:
-                blocks.append(TextBlock(InlineFont(rFont=FONT_NAME, sz=10), body))
+                blocks.append(TextBlock(normal_font, body))
         elif body:
-            blocks.append(TextBlock(InlineFont(rFont=FONT_NAME, sz=10), body))
+            blocks.append(TextBlock(normal_font, lead + body))
     return CellRichText(blocks)
 
 
@@ -242,12 +289,13 @@ def _build_detail_sheet(ws: Worksheet, entries: Sequence[LogEntry]) -> None:
     index = 0
     for group, entry in enumerate(entries):
         shade = group % 2 == 1
-        message = entry.summary_message()
+        message = entry.message
+        message_lines = display_message(message)
         if not entry.files:
             index += 1
             values = [index, entry.revision, entry.author, entry.date, message, "", "", ""]
             _write_row(ws, row, values, shade, DETAIL_CENTER)
-            ws.row_dimensions[row].height = _row_height((message, MESSAGE_WIDTH))
+            ws.row_dimensions[row].height = _row_height((message_lines, MESSAGE_WIDTH))
             row += 1
             continue
 
@@ -265,7 +313,7 @@ def _build_detail_sheet(ws: Worksheet, entries: Sequence[LogEntry]) -> None:
             ]
             _write_row(ws, row, values, shade, DETAIL_CENTER)
             ws.row_dimensions[row].height = _row_height(
-                (message, MESSAGE_WIDTH),
+                (message_lines, MESSAGE_WIDTH),
                 (change.path, DETAIL_WIDTHS[6]),
             )
             row += 1
@@ -281,7 +329,7 @@ def _build_summary_sheet(ws: Worksheet, entries: Sequence[LogEntry]) -> None:
     row = 2
     for index, entry in enumerate(entries, start=1):
         file_list = "\n".join(f"{f.action_cn} {f.path}" for f in entry.files) or "(无匹配文件)"
-        message = entry.summary_message()
+        message = entry.message
         values = [
             index,
             entry.revision,
@@ -296,7 +344,7 @@ def _build_summary_sheet(ws: Worksheet, entries: Sequence[LogEntry]) -> None:
         ]
         _write_row(ws, row, values, index % 2 == 0, SUMMARY_CENTER)
         ws.row_dimensions[row].height = _row_height(
-            (message, MESSAGE_WIDTH),
+            (display_message(message), MESSAGE_WIDTH),
             (file_list, SUMMARY_WIDTHS[9]),
         )
         row += 1

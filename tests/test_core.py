@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -111,6 +112,26 @@ class MessageFormatTests(unittest.TestCase):
         self.assertEqual(labels, ["", "更改原因：", "问题单号：", "更改措施："])
         self.assertEqual(segments[0][1], "改了逻辑")
 
+    def test_split_test_status_keyword(self) -> None:
+        segments = split_message_segments("测试情况：本地回归通过")
+        self.assertEqual(segments, [("测试情况：", "本地回归通过")])
+
+    def test_split_bracket_style(self) -> None:
+        segments = split_message_segments("【更改原因】崩溃\n【问题单号】BUG-1\n【影响范围】核心\n【测试情况】通过")
+        self.assertEqual(
+            [s[0] for s in segments],
+            ["【更改原因】", "【问题单号】", "【影响范围】", "【测试情况】"],
+        )
+        self.assertEqual(segments[0][1], "崩溃")
+
+    def test_split_bare_label_lines(self) -> None:
+        segments = split_message_segments("更改原因\n空指针\n问题单号：BUG-1\n测试情况：通过")
+        self.assertEqual(
+            [s[0] for s in segments],
+            ["更改原因：", "", "问题单号：", "测试情况："],
+        )
+        self.assertEqual(segments[1][1], "空指针")
+
     def test_plain_message(self) -> None:
         self.assertEqual(split_message_segments("Fix a crash in parser"), [("", "Fix a crash in parser")])
         self.assertEqual(split_message_segments(""), [])
@@ -184,6 +205,16 @@ class ExcelTests(unittest.TestCase):
             bold_blocks = [b for b in value if isinstance(b, TextBlock) and b.font.b]
             self.assertEqual(len(bold_blocks), 5)
             self.assertGreaterEqual(detail.row_dimensions[2].height, 16)
+
+            # 不能出现只含空白的 run，否则 Excel 会报「字符串属性」修复错误
+            for block in value:
+                if isinstance(block, TextBlock):
+                    self.assertTrue(block.text.strip(), repr(block.text))
+
+            with zipfile.ZipFile(path) as archive:
+                sheet_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+            self.assertNotRegex(sheet_xml, r"<t>\s*</t>")
+            self.assertIn('xml:space="preserve"', sheet_xml)
 
             summary = workbook["版本汇总"]
             self.assertIsInstance(summary["E2"].value, CellRichText)
