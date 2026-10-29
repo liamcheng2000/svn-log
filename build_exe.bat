@@ -28,6 +28,7 @@ python -m PyInstaller ^
     --windowed ^
     --name "SVN日志导出" ^
     --version-file version_info.txt ^
+    --exclude-module numpy ^
     --add-data "docs\user_manual.md;docs" ^
     --paths . ^
     main.py

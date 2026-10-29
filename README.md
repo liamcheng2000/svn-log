@@ -2,7 +2,7 @@
 
 按 SVN 地址 + 日期范围或版本范围导出提交日志，自动过滤 `.cpp` / `.h` 文件，生成三页 Excel 报表。
 
-**当前版本：v1.1.0**
+**当前版本：v1.1.1**
 
 ## 环境要求
 
@@ -75,6 +75,7 @@ build_exe.bat
 ```
 
 产物：`dist\SVN日志导出.exe`（单文件、无控制台），使用说明 `docs\user_manual.md` 会一起打包进 exe。
+打包时已通过 `--exclude-module numpy` 排除 NumPy，避免老 CPU 因缺少 AVX2 指令集而无法启动。
 目标机器仍需安装 TortoiseSVN（提供 svn.exe），或把 svn.exe 放到 PATH。
 
 ## 项目结构
@@ -91,13 +92,14 @@ docs/user_manual.md     软件使用说明（随 exe 打包）
 tests/test_core.py      解析/过滤/Excel 自测
 tests/test_help.py      使用说明文档自测
 build_exe.bat           PyInstaller 打包脚本
-version_info.txt        exe 版本资源（1.1.0）
+version_info.txt        exe 版本资源（1.1.1）
 ```
 
 ## 版本记录
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.1 | 打包排除 NumPy，修复在不支持 AVX2 的 CPU 上启动报错的问题；exe 体积同步减小 |
 | 1.1.0 | 新增「帮助」按钮与 `F1` 快捷键，内置 Markdown 使用说明窗口；随 exe 打包 `docs\user_manual.md` |
 | 1.0.2 | 修复 Excel 打开时提示「检测到错误/已修复记录：字符串属性」的问题（富文本换行不再产生仅含空白的文本块）；字段识别新增测试情况/测试结果/自测情况等，并支持 `【字段】`、字段独占一行、字段后空格等写法 |
 | 1.0.1 | 版本范围留空默认最近 10 条（HEAD-10 ~ HEAD）；Excel 被占用时弹窗提示关闭；序号/版本/作者/日期/操作等列居中；提交说明中「更改原因/问题单号/更改措施/影响范围/桌面验证」等字段加粗并分段换行；保存改为临时文件原子替换 |
