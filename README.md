@@ -2,7 +2,7 @@
 
 按 SVN 地址 + 日期范围或版本范围导出提交日志，自动过滤 `.cpp` / `.h` 文件，生成三页 Excel 报表。
 
-**当前版本：v1.1.1**
+**当前版本：v1.1.2**
 
 ## 环境要求
 
@@ -91,14 +91,16 @@ app/ui.py               tkinter 主窗口、日历弹窗、后台线程
 docs/user_manual.md     软件使用说明（随 exe 打包）
 tests/test_core.py      解析/过滤/Excel 自测
 tests/test_help.py      使用说明文档自测
+tests/test_ui_position.py  日历弹窗定位自测
 build_exe.bat           PyInstaller 打包脚本
-version_info.txt        exe 版本资源（1.1.1）
+version_info.txt        exe 版本资源（1.1.2）
 ```
 
 ## 版本记录
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.2 | 日历弹窗改为紧贴「日历」按钮定位，并自动避让屏幕边缘；主窗口按屏幕尺寸自适应，小屏幕不再超出可见区域 |
 | 1.1.1 | 打包排除 NumPy，修复在不支持 AVX2 的 CPU 上启动报错的问题；exe 体积同步减小 |
 | 1.1.0 | 新增「帮助」按钮与 `F1` 快捷键，内置 Markdown 使用说明窗口；随 exe 打包 `docs\user_manual.md` |
 | 1.0.2 | 修复 Excel 打开时提示「检测到错误/已修复记录：字符串属性」的问题（富文本换行不再产生仅含空白的文本块）；字段识别新增测试情况/测试结果/自测情况等，并支持 `【字段】`、字段独占一行、字段后空格等写法 |

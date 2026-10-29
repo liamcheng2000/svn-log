@@ -20,6 +20,27 @@ from .svn_client import Cancelled, SvnError
 WEEKDAYS = ("一", "二", "三", "四", "五", "六", "日")
 
 
+def _clamp_popup_position(
+    anchor_x: int,
+    anchor_y: int,
+    anchor_w: int,
+    anchor_h: int,
+    popup_w: int,
+    popup_h: int,
+    screen_w: int,
+    screen_h: int,
+    margin: int = 8,
+) -> tuple[int, int]:
+    """把弹窗放到锚点下方（放不下则上方），并保证不超出屏幕。"""
+    x = anchor_x + (anchor_w - popup_w) // 2
+    y = anchor_y + anchor_h + 4
+    if y + popup_h > screen_h - margin:
+        y = anchor_y - popup_h - 4
+    x = max(margin, min(x, screen_w - popup_w - margin))
+    y = max(margin, min(y, screen_h - popup_h - margin))
+    return x, y
+
+
 def _is_file_locked(path: str) -> bool:
     """Windows 上判断文件是否被其他程序（如 Excel）独占。"""
     if not os.path.exists(path):
@@ -44,9 +65,10 @@ def _is_locked_error(exc: OSError) -> bool:
 class CalendarPopup(tk.Toplevel):
     """轻量日历弹窗，避免引入第三方控件。"""
 
-    def __init__(self, master: tk.Misc, initial: date, on_pick):
+    def __init__(self, master: tk.Misc, initial: date, on_pick, anchor: tk.Misc | None = None):
         super().__init__(master)
         self.on_pick = on_pick
+        self.anchor = anchor or master
         self.year = initial.year
         self.month = initial.month
         self.title("选择日期")
@@ -72,12 +94,30 @@ class CalendarPopup(tk.Toplevel):
         self.bind("<Escape>", lambda _event: self.destroy())
 
         self.update_idletasks()
+        self._place_near_anchor()
+
+    def _place_near_anchor(self) -> None:
+        """紧贴日历按钮弹出，并限制在屏幕范围内。"""
+        anchor = self.anchor
         try:
-            x = master.winfo_rootx() + 10
-            y = master.winfo_rooty() + master.winfo_height() + 4
-            self.geometry(f"+{x}+{y}")
+            anchor_x = anchor.winfo_rootx()
+            anchor_y = anchor.winfo_rooty()
+            anchor_w = anchor.winfo_width()
+            anchor_h = anchor.winfo_height()
         except tk.TclError:
-            pass
+            anchor_x = anchor_y = anchor_w = anchor_h = 0
+
+        x, y = _clamp_popup_position(
+            anchor_x,
+            anchor_y,
+            anchor_w,
+            anchor_h,
+            self.winfo_reqwidth(),
+            self.winfo_reqheight(),
+            self.winfo_screenwidth(),
+            self.winfo_screenheight(),
+        )
+        self.geometry(f"+{x}+{y}")
 
     def _shift(self, delta: int) -> None:
         month = self.month + delta
@@ -141,8 +181,17 @@ class App(tk.Tk):
         self._running = False
 
         self.title(f"{config.APP_NAME} v{config.APP_VERSION}")
-        self.geometry("1040x780")
-        self.minsize(900, 680)
+
+        # 按屏幕尺寸自适应，避免小屏幕上窗口超出可见区域
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(1040, max(760, screen_w - 100))
+        height = min(780, max(560, screen_h - 130))
+        pos_x = max((screen_w - width) // 2, 0)
+        pos_y = max((screen_h - height) // 2 - 10, 0)
+        self.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
+        self.minsize(min(880, width), min(620, height))
+
         try:
             ttk.Style(self).theme_use("vista")
         except tk.TclError:
@@ -220,12 +269,16 @@ class App(tk.Tk):
         ttk.Label(frame, text="起始").grid(row=0, column=1, sticky="e", padx=(12, 6))
         self.entry_date_from = ttk.Entry(frame, textvariable=self.var_date_from, width=14)
         self.entry_date_from.grid(row=0, column=2, sticky="ew")
-        self.btn_cal_from = ttk.Button(frame, text="日历", width=6, command=lambda: self._pick_date(self.var_date_from))
+        self.btn_cal_from = ttk.Button(
+            frame, text="日历", width=6, command=lambda: self._pick_date(self.var_date_from, self.btn_cal_from)
+        )
         self.btn_cal_from.grid(row=0, column=3, padx=(4, 12))
         ttk.Label(frame, text="结束").grid(row=0, column=4, sticky="e", padx=(0, 6))
         self.entry_date_to = ttk.Entry(frame, textvariable=self.var_date_to, width=14)
         self.entry_date_to.grid(row=0, column=5, sticky="ew")
-        self.btn_cal_to = ttk.Button(frame, text="日历", width=6, command=lambda: self._pick_date(self.var_date_to))
+        self.btn_cal_to = ttk.Button(
+            frame, text="日历", width=6, command=lambda: self._pick_date(self.var_date_to, self.btn_cal_to)
+        )
         self.btn_cal_to.grid(row=0, column=6, padx=(4, 0))
         ttk.Label(frame, text="留空 = 不限（YYYY-MM-DD）", foreground="#7F7F7F").grid(
             row=0, column=7, sticky="w", padx=(12, 0)
@@ -340,7 +393,7 @@ class App(tk.Tk):
         for widget in (self.entry_rev_from, self.entry_rev_to):
             widget.configure(state=rev_state)
 
-    def _pick_date(self, variable: tk.StringVar) -> None:
+    def _pick_date(self, variable: tk.StringVar, anchor: tk.Misc | None = None) -> None:
         initial = date.today()
         text = variable.get().strip()
         if text:
@@ -348,7 +401,7 @@ class App(tk.Tk):
                 initial = datetime.strptime(self._normalize_date(text), "%Y-%m-%d").date()
             except ValueError:
                 pass
-        CalendarPopup(self, initial, variable.set)
+        CalendarPopup(self, initial, variable.set, anchor=anchor)
 
     def _log(self, message: str) -> None:
         stamp = datetime.now().strftime("%H:%M:%S")
