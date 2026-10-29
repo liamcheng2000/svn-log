@@ -2,7 +2,7 @@
 
 按 SVN 地址 + 日期范围或版本范围导出提交日志，自动过滤 `.cpp` / `.h` 文件，生成三页 Excel 报表。
 
-**当前版本：v1.0.2**
+**当前版本：v1.1.0**
 
 ## 环境要求
 
@@ -30,6 +30,7 @@ python main.py
 3. **文件过滤**：默认 `.cpp;.h`，分号/逗号/空格分隔，支持 `*.cpp`、`cpp`、`.cpp` 三种写法，不区分大小写。留空 = 全部文件。
 4. 选择**导出文件**路径，点击「开始导出」。查询在后台线程执行，可随时取消。
 5. 完成后自动打开 Excel（可取消勾选「生成后自动打开 Excel」）。
+6. 点击右下角「帮助」（或按 `F1`）可打开内置使用说明。
 
 ## Excel 结构
 
@@ -73,7 +74,7 @@ python main.py
 build_exe.bat
 ```
 
-产物：`dist\SVN日志导出.exe`（单文件、无控制台）。
+产物：`dist\SVN日志导出.exe`（单文件、无控制台），使用说明 `docs\user_manual.md` 会一起打包进 exe。
 目标机器仍需安装 TortoiseSVN（提供 svn.exe），或把 svn.exe 放到 PATH。
 
 ## 项目结构
@@ -84,16 +85,20 @@ app/config.py           偏好持久化（不含凭据）
 app/models.py           LogEntry / FileChange
 app/svn_client.py       svn.exe 定位、命令构造、XML 解析、错误翻译
 app/excel_writer.py     三页报表生成与样式
+app/help_window.py      内置使用说明窗口（Markdown 渲染）
 app/ui.py               tkinter 主窗口、日历弹窗、后台线程
+docs/user_manual.md     软件使用说明（随 exe 打包）
 tests/test_core.py      解析/过滤/Excel 自测
+tests/test_help.py      使用说明文档自测
 build_exe.bat           PyInstaller 打包脚本
-version_info.txt        exe 版本资源（1.0.2）
+version_info.txt        exe 版本资源（1.1.0）
 ```
 
 ## 版本记录
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.0 | 新增「帮助」按钮与 `F1` 快捷键，内置 Markdown 使用说明窗口；随 exe 打包 `docs\user_manual.md` |
 | 1.0.2 | 修复 Excel 打开时提示「检测到错误/已修复记录：字符串属性」的问题（富文本换行不再产生仅含空白的文本块）；字段识别新增测试情况/测试结果/自测情况等，并支持 `【字段】`、字段独占一行、字段后空格等写法 |
 | 1.0.1 | 版本范围留空默认最近 10 条（HEAD-10 ~ HEAD）；Excel 被占用时弹窗提示关闭；序号/版本/作者/日期/操作等列居中；提交说明中「更改原因/问题单号/更改措施/影响范围/桌面验证」等字段加粗并分段换行；保存改为临时文件原子替换 |
 | 1.0.0 | 首个正式版：SVN 地址/日期/版本输入、`.cpp`/`.h` 过滤、三页 Excel（基本信息 / 日志明细 / 版本汇总）、后台查询与取消、凭据复用与认证终端、偏好记忆 |

@@ -13,6 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import config, svn_client
 from .excel_writer import write_report
+from .help_window import show_help
 from .models import LogEntry
 from .svn_client import Cancelled, SvnError
 
@@ -152,6 +153,7 @@ class App(tk.Tk):
         self._apply_config()
         self._sync_mode_state()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.bind("<F1>", lambda _event: show_help(self))
         self.after(100, self._poll_queue)
         if not self.svn_exe:
             self._log("未找到 svn.exe，请手动指定（通常在 TortoiseSVN 的 bin 目录下）。")
@@ -281,6 +283,8 @@ class App(tk.Tk):
         self.btn_auth.pack(side="left", padx=(8, 0))
         self.btn_folder = ttk.Button(buttons, text="打开输出目录", command=self._on_open_folder)
         self.btn_folder.pack(side="left", padx=(8, 0))
+        self.btn_help = ttk.Button(buttons, text="帮助", command=lambda: show_help(self))
+        self.btn_help.pack(side="right")
 
         self.progress = ttk.Progressbar(frame, mode="determinate", maximum=100)
         self.progress.grid(row=1, column=0, sticky="ew", pady=(8, 4))

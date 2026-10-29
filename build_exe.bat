@@ -28,6 +28,7 @@ python -m PyInstaller ^
     --windowed ^
     --name "SVN日志导出" ^
     --version-file version_info.txt ^
+    --add-data "docs\user_manual.md;docs" ^
     --paths . ^
     main.py
 if errorlevel 1 goto :fail

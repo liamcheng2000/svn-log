@@ -7,7 +7,7 @@ import os
 from typing import Any
 
 APP_NAME = "SVN 日志导出工具"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.1.0"
 
 DEFAULT_FILE_FILTER = ".cpp;.h"
 
